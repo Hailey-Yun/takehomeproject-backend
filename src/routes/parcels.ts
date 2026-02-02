@@ -3,37 +3,70 @@ import { pool } from "../db/pool";
 
 const router = Router();
 
-
+/**
+ * GET /parcels
+ * Query params:
+ *  - isAuthenticated=true|false (임시)
+ *  - limit (default 50, max 200)
+ *  - minPrice, maxPrice  (total_value)
+ *  - minSqft,  maxSqft   (sqft)
+ */
 router.get("/", async (req: Request, res: Response) => {
   const isAuthenticated = req.query.isAuthenticated === "true";
   const limit = Math.min(Number(req.query.limit ?? 50), 200);
 
+  const minPrice = req.query.minPrice !== undefined ? Number(req.query.minPrice) : undefined;
+  const maxPrice = req.query.maxPrice !== undefined ? Number(req.query.maxPrice) : undefined;
+  const minSqft = req.query.minSqft !== undefined ? Number(req.query.minSqft) : undefined;
+  const maxSqft = req.query.maxSqft !== undefined ? Number(req.query.maxSqft) : undefined;
+
   try {
-    const text = isAuthenticated
-      ? `
-        SELECT sl_uuid, address, county, sqft, total_value, geom
-        FROM takehome.dallas_parcels
-        LIMIT $1
-      `
-      : `
-        SELECT sl_uuid, address, county, sqft, total_value, geom
-        FROM takehome.dallas_parcels
-        WHERE LOWER(county) = $2
-        LIMIT $1
-      `;
+    const where: string[] = [];
+    const values: any[] = [];
+    let idx = 1;
 
-    const values = isAuthenticated ? [limit] : [limit, "dallas"];
+    // Guest restriction (ST-03)
+    if (!isAuthenticated) {
+      where.push(`LOWER(county) = $${idx++}`);
+      values.push("dallas");
+    }
+
+    // Price filter (ST-04) - total_value is bigint
+    if (Number.isFinite(minPrice)) {
+      where.push(`total_value >= $${idx++}`);
+      values.push(Math.floor(minPrice!));
+    }
+    if (Number.isFinite(maxPrice)) {
+      where.push(`total_value <= $${idx++}`);
+      values.push(Math.floor(maxPrice!));
+    }
+
+    // Size filter (ST-04) - sqft can be null
+    if (Number.isFinite(minSqft)) {
+      where.push(`sqft IS NOT NULL AND sqft >= $${idx++}`);
+      values.push(minSqft);
+    }
+    if (Number.isFinite(maxSqft)) {
+      where.push(`sqft IS NOT NULL AND sqft <= $${idx++}`);
+      values.push(maxSqft);
+    }
+
+    const whereClause = where.length ? `WHERE ${where.join(" AND ")}` : "";
+
+    const text = `
+      SELECT sl_uuid, address, county, sqft, total_value, geom
+      FROM takehome.dallas_parcels
+      ${whereClause}
+      LIMIT $${idx}
+    `;
+    values.push(limit);
+
     const { rows } = await pool.query(text, values);
-
     return res.json(rows);
   } catch (err: unknown) {
     console.error("DB ERROR (/parcels):", err);
-
     const detail = err instanceof Error ? err.message : String(err);
-    return res.status(500).json({
-      error: "Failed to fetch parcels",
-      detail,
-    });
+    return res.status(500).json({ error: "Failed to fetch parcels", detail });
   }
 });
 
