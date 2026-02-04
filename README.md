@@ -1,5 +1,3 @@
-
-### Backend README
 # Take Home Project – Backend
 
 ## Base URL
