@@ -2,8 +2,8 @@ import express, { Request, Response } from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import parcelsRouter from "./routes/parcels";
-import adminRouter from "./routes/admin"; //삭제하기
 import filtersRouter from "./routes/filters";
+import savedFiltersRouter from "./routes/savedFilters";
 
 
 dotenv.config();
@@ -13,8 +13,8 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 app.use("/parcels", parcelsRouter);
-app.use("/admin", adminRouter); //삭제하기
 app.use("/filters", filtersRouter);
+app.use("/saved-filters", savedFiltersRouter);
 
 app.get("/health", (_req: Request, res: Response) => {
   res.json({ ok: true });

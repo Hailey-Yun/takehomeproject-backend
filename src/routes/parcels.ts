@@ -1,7 +1,87 @@
 import { Router, Request, Response } from "express";
 import { pool } from "../db/pool";
+import wkx from "wkx";
 
 const router = Router();
+
+function addLatLngFromGeom(row: any) {
+  try {
+    if (!row?.geom) return row;
+
+    // row.geom can be hex string or Buffer
+    const buf = Buffer.isBuffer(row.geom) ? row.geom : Buffer.from(row.geom, "hex");
+    const geom = wkx.Geometry.parse(buf);
+
+    const gj: any = geom.toGeoJSON();
+
+    const ll = extractLatLngFromGeoJSON(gj);
+    if (!ll) return row;
+
+    return {
+      ...row,
+      latitude: ll.lat,
+      longitude: ll.lng,
+    };
+  } catch (e) {
+    console.error("geom parse failed:", e);
+    return row;
+  }
+}
+
+function extractLatLngFromGeoJSON(gj: any): { lat: number; lng: number } | null {
+  if (!gj) return null;
+
+  // 1) Point
+  if (gj.type === "Point" && Array.isArray(gj.coordinates)) {
+    const [lng, lat] = gj.coordinates;
+    if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
+    return null;
+  }
+
+  // 2) GeometryCollection: find a Point first (best)
+  if (gj.type === "GeometryCollection" && Array.isArray(gj.geometries)) {
+    for (const g of gj.geometries) {
+      const found = extractLatLngFromGeoJSON(g);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  // 3) Polygon / MultiPolygon / LineString ... : fallback to bbox center
+  const coords: [number, number][] = [];
+  collectLngLatPairs(gj.coordinates, coords);
+  if (coords.length === 0) return null;
+
+  let minLng = Infinity, maxLng = -Infinity, minLat = Infinity, maxLat = -Infinity;
+  for (const [lng, lat] of coords) {
+    if (!Number.isFinite(lng) || !Number.isFinite(lat)) continue;
+    minLng = Math.min(minLng, lng);
+    maxLng = Math.max(maxLng, lng);
+    minLat = Math.min(minLat, lat);
+    maxLat = Math.max(maxLat, lat);
+  }
+
+  if (!Number.isFinite(minLng) || !Number.isFinite(minLat)) return null;
+  return { lat: (minLat + maxLat) / 2, lng: (minLng + maxLng) / 2 };
+}
+
+// Recursively collects [lng,lat] pairs from nested coordinates arrays
+function collectLngLatPairs(node: any, out: [number, number][]) {
+  if (!node) return;
+
+  // if it's a single coordinate pair [lng, lat]
+  if (Array.isArray(node) && node.length === 2 &&
+      typeof node[0] === "number" && typeof node[1] === "number") {
+    out.push([node[0], node[1]]);
+    return;
+  }
+
+  // otherwise recurse
+  if (Array.isArray(node)) {
+    for (const child of node) collectLngLatPairs(child, out);
+  }
+}
+
 
 /**
  * GET /parcels
@@ -62,7 +142,8 @@ router.get("/", async (req: Request, res: Response) => {
     values.push(limit);
 
     const { rows } = await pool.query(text, values);
-    return res.json(rows);
+    const enrichedRows = rows.map(addLatLngFromGeom);
+    return res.json(enrichedRows);
   } catch (err: unknown) {
     console.error("DB ERROR (/parcels):", err);
     const detail = err instanceof Error ? err.message : String(err);
@@ -88,7 +169,10 @@ function escapeCsv(value: unknown): string {
  * Same filters as /parcels
  */
 router.get("/export.csv", async (req: Request, res: Response) => {
-  const isAuthenticated = req.query.isAuthenticated === "true";
+  const hasToken = typeof req.query.token === "string" && req.query.token.trim() !== "";
+
+  const isAuthenticated =
+    req.query.isAuthenticated === "true" || hasToken;
   const limit = Math.min(Number(req.query.limit ?? 5000), 5000);
 
   const minPrice = req.query.minPrice !== undefined ? Number(req.query.minPrice) : undefined;
@@ -135,6 +219,7 @@ router.get("/export.csv", async (req: Request, res: Response) => {
     values.push(limit);
 
     const { rows } = await pool.query(text, values);
+
 
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader(
