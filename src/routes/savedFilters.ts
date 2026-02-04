@@ -58,6 +58,7 @@ router.get("/", async (req, res) => {
 // POST /saved-filters
 // body: { userId: string, filters: Filters }
 router.post("/", async (req, res) => {
+  console.log("[DEPLOY CHECK] NEW saved-filters code running");
   try {
     const userId = String(req.body?.userId || "").trim();
     const filters = (req.body?.filters || {}) as Filters;
