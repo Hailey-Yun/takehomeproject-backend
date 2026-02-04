@@ -15,8 +15,8 @@ Health: https://takehomeproject-backend.onrender.com/health
   - Exports filtered results as CSV
 
 ## Environment Variables
-- `DATABASE_URL` = postgres://takehome:Kss7JKSC4N@108.61.159.122:13432/gis
-- `ALLOWED_ORIGINS` = https://startling-raindrop-e9c0c1.netlify.app
+- `DATABASE_URL`
+- `ALLOWED_ORIGINS`
 
 ## Local Development
 ```bash
