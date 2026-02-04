@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, Request, Response } from "express";
 import fs from "node:fs/promises";
 import path from "node:path";
 
@@ -42,22 +42,16 @@ async function writeStore(store: Store) {
 }
 
 // GET /saved-filters?userId=xxx
-router.get("/", async (req, res) => {
-  try {
-    const userId = String(req.query.userId || "").trim();
-    if (!userId) return res.status(400).json({ message: "userId is required" });
+router.get("/", async (req: Request, res: Response) => {
+  const userId = String(req.query.userId || "").trim();
+  if (!userId) return res.status(400).json({ message: "userId is required" });
 
-    const store = await readStore();
-    return res.json(store[userId] ?? {});
-  } catch (err) {
-    console.error("[saved-filters][GET] error:", err);
-    return res.status(500).json({ message: "Failed to load saved filters" });
-  }
+  const store = await readStore();
+  return res.json(store[userId] ?? {});
 });
 
 // POST /saved-filters
-// body: { userId: string, filters: Filters }
-router.post("/", async (req, res) => {
+router.post("/", async (req: Request, res: Response) => {
   console.log("[DEPLOY CHECK] NEW saved-filters code running");
   try {
     const userId = String(req.body?.userId || "").trim();
@@ -75,5 +69,6 @@ router.post("/", async (req, res) => {
     return res.status(500).json({ message: "Failed to save filters" });
   }
 });
+
 
 export default router;
