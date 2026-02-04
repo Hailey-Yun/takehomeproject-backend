@@ -9,9 +9,9 @@ Health: https://takehomeproject-backend.onrender.com/health
 - Postgres
 
 ## Main Endpoints
-- `GET /parcels`
+- `GET /parcels`  
   - Supports guest vs logged-in behavior via `isAuthenticated` flag (take-home constraint)
-- `GET /parcels/export.csv`
+- `GET /parcels/export.csv`  
   - Exports filtered results as CSV
 
 ## Environment Variables
